@@ -3,24 +3,27 @@ on: [push, workflow_dispatch]
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Xcode version
+      - name: Set up iOS Cross Toolchain
         run: |
-          DEVELOPER_DIR=$(xcode-select -p)
-          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> $GITHUB_ENV
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm
+
+      - name: Download iOS SDK
+        run: |
+          git clone --depth 1 https://github.com/theos/sdks.git $HOME/sdks
 
       - name: Compile Dylib
         run: |
-          SDKPATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          clang -dynamiclib \
+          clang -shared \
             -fobjc-arc \
-            -arch arm64 \
-            -miphoneos-version-min=14.0 \
-            -isysroot "$SDKPATH" \
+            -target arm64-apple-ios14.0 \
+            -isysroot $HOME/sdks/iPhoneOS14.5.sdk \
+            -F$HOME/sdks/iPhoneOS14.5.sdk/System/Library/Frameworks \
             -framework UIKit \
             -framework Foundation \
             -framework QuartzCore \
