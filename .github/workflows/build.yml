@@ -8,6 +8,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set up Xcode version
+        run: |
+          DEVELOPER_DIR=$(xcode-select -p)
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> $GITHUB_ENV
+
       - name: Compile Dylib
         run: |
           SDKPATH=$(xcrun --sdk iphoneos --show-sdk-path)
