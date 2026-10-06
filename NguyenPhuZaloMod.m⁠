@@ -1,0 +1,338 @@
+#import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
+
+// --- CẤU TRÚC 28 TÍNH NĂNG ---
+typedef struct {
+    BOOL hideReadReceipt;      // 1. Ẩn Đã xem
+    BOOL hideTypingStatus;     // 2. Ẩn Đang soạn tin
+    BOOL hideOnlineStatus;     // 3. Ẩn Trạng thái Online
+    BOOL preventMsgRecall;     // 4. Chống Thu hồi tin nhắn
+    BOOL downloadHDStories;    // 5. Tải Story HD
+    BOOL downloadViewOnce;     // 6. Lưu ảnh/video Xem 1 lần
+    BOOL disableAds;           // 7. Chặn Quảng cáo
+    BOOL unlockVIPBadges;      // 8. Khung Profile VIP
+    BOOL bypassScreenshot;     // 9. Bỏ chặn Chụp màn hình
+    BOOL autoLikeStories;      // 10. Auto Like Story
+    BOOL customThemeDark;      // 11. Giao diện Dark Amoled
+    BOOL fastForwardAudio;     // 12. Tua nhanh Voice x2
+    BOOL allowLargeFiles;      // 13. Gửi File dung lượng lớn
+    BOOL hideGroupMembers;     // 14. Ẩn Thành viên nhóm
+    BOOL autoReplyMsg;         // 15. Tự động Trả lời
+    BOOL pinUnlimitedChats;    // 16. Ghim vô hạn Chat
+    BOOL lockAppBio;           // 17. Khóa ứng dụng (FaceID/Passcode)
+    BOOL fakeLocation;         // 18. Giả lập Vị trí GPS
+    BOOL customFontSize;       // 19. Tùy chỉnh Cỡ chữ
+    BOOL customFontBold;       // 20. Font chữ In đậm
+    BOOL customFontItalic;     // 21. Font chữ In nghiêng
+    BOOL customTextColor;      // 22. Đổi Màu chữ Tin nhắn
+    BOOL disableSeenStory;     // 23. Xem Story ẩn danh
+    BOOL copyProtectedText;    // 24. Sao chép Văn bản bảo vệ
+    BOOL disableTypingVibe;    // 25. Tắt Hiệu ứng Rung khi gõ
+    BOOL hideCallingBadge;     // 26. Ẩn Badge Cuộc gọi đến
+    BOOL autoTranslateMsg;     // 27. Dịch Tự động Tin nhắn
+    BOOL antiDeleteCallLog;    // 28. Chống Xóa Nhật ký cuộc gọi
+} ModSettings;
+
+static ModSettings gSettings;
+
+// --- VẼ SVG BẰNG UIBEZIERPATH ---
+@interface SVGUtils : NSObject
++ (CAShapeLayer *)createSVGIconWithType:(NSInteger)type size:(CGSize)size color:(UIColor *)color;
+@end
+
+@implementation SVGUtils
++ (CAShapeLayer *)createSVGIconWithType:(NSInteger)type size:(CGSize)size color:(UIColor *)color {
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    CGFloat w = size.width;
+    CGFloat h = size.height;
+
+    if (type == 0) { // SVG Pill Status Dot (Circle)
+        path = [UIBezierPath bezierPathWithOvalInRect:CGRectMake(0, 0, w, h)];
+    } else if (type == 1) { // SVG Settings Gear
+        [path moveToPoint:CGPointMake(w*0.5, h*0.2)];
+        [path addLineToPoint:CGPointMake(w*0.5, h*0.8)];
+        [path moveToPoint:CGPointMake(w*0.2, h*0.5)];
+        [path addLineToPoint:CGPointMake(w*0.8, h*0.5)];
+        [path addArcWithCenter:CGPointMake(w*0.5, h*0.5) radius:w*0.25 startAngle:0 endAngle:M_PI*2 clockwise:YES];
+    } else { // SVG Shield Mod Icon
+        [path moveToPoint:CGPointMake(w*0.5, h*0.1)];
+        [path addLineToPoint:CGPointMake(w*0.9, h*0.3)];
+        [path addLineToPoint:CGPointMake(w*0.9, h*0.6)];
+        [path addQuadCurveToPoint:CGPointMake(w*0.5, h*0.95) controlPoint:CGPointMake(w*0.9, h*0.85)];
+        [path addQuadCurveToPoint:CGPointMake(w*0.1, h*0.6) controlPoint:CGPointMake(w*0.1, h*0.85)];
+        [path addLineToPoint:CGPointMake(w*0.1, h*0.3)];
+        [path closePath];
+    }
+
+    CAShapeLayer *shape = [CAShapeLayer layer];
+    shape.path = path.CGPath;
+    shape.strokeColor = color.CGColor;
+    shape.fillColor = (type == 0) ? color.CGColor : [UIColor clearColor].CGColor;
+    shape.lineWidth = 1.8;
+    return shape;
+}
+@end
+
+// --- GIAO DIỆN MENU NỔI MAIN ---
+@interface NguyenPhuPillMenu : UIView <UITableViewDelegate, UITableViewDataSource>
+@property (nonatomic, strong) UIView *pillView;
+@property (nonatomic, strong) UILabel *titleLabel;
+@property (nonatomic, strong) UIView *menuContainer;
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) CAGradientLayer *rainbowLayer;
+@property (nonatomic, assign) BOOL isExpanded;
+@end
+
+@implementation NguyenPhuPillMenu
+
++ (void)load {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIWindow *window = [UIApplication sharedApplication].keyWindow;
+        if (window) {
+            NguyenPhuPillMenu *menu = [[NguyenPhuPillMenu alloc] initWithFrame:window.bounds];
+            [window addSubview:menu];
+        }
+    });
+}
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.userInteractionEnabled = YES;
+        [self setupPillUI];
+        [self setupMenuContainer];
+    }
+    return self;
+}
+
+// 1. KHỞI TẠO PILL CAPUSLE UI
+- (void)setupPillUI {
+    _pillView = [[UIView alloc] initWithFrame:CGRectMake(20, 110, 180, 40)];
+    _pillView.backgroundColor = [UIColor colorWithRed:0.05 green:0.05 blue:0.08 alpha:0.9];
+    _pillView.layer.cornerRadius = 20;
+    _pillView.layer.borderWidth = 1.2;
+    _pillView.layer.borderColor = [UIColor colorWithRed:0.0 green:0.6 blue:1.0 alpha:0.8].CGColor;
+    
+    // Đổ bóng Glow
+    _pillView.layer.shadowColor = [UIColor colorWithRed:0.0 green:0.5 blue:1.0 alpha:0.5].CGColor;
+    _pillView.layer.shadowOffset = CGSizeZero;
+    _pillView.layer.shadowOpacity = 0.9;
+    _pillView.layer.shadowRadius = 8;
+
+    // Chèn Icon SVG Dot
+    CAShapeLayer *dotLayer = [SVGUtils createSVGIconWithType:0 size:CGSizeMake(10, 10) color:[UIColor colorWithRed:0.0 green:0.9 blue:0.4 alpha:1.0]];
+    dotLayer.frame = CGRectMake(14, 15, 10, 10);
+    [_pillView.layer addSublayer:dotLayer];
+
+    // Nhãn Tên Menu
+    _titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(32, 9, 140, 22)];
+    _titleLabel.text = @"Nguyen Phu Mod Zalo";
+    _titleLabel.textColor = [UIColor whiteColor];
+    _titleLabel.font = [UIFont boldSystemFontOfSize:12];
+    [_pillView addSubview:_titleLabel];
+
+    [self addSubview:_pillView];
+
+    // Cử chỉ
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggleMenu)];
+    [_pillView addGestureRecognizer:tap];
+
+    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+    [_pillView addGestureRecognizer:pan];
+}
+
+// 2. BẢNG KHUNG TÍNH NĂNG
+- (void)setupMenuContainer {
+    _menuContainer = [[UIView alloc] initWithFrame:CGRectMake(20, 160, 310, 480)];
+    _menuContainer.alpha = 0.0;
+    _menuContainer.transform = CGAffineTransformMakeScale(0.85, 0.85);
+
+    UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
+    UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blur];
+    blurView.frame = _menuContainer.bounds;
+    blurView.layer.cornerRadius = 22;
+    blurView.clipsToBounds = YES;
+    blurView.layer.borderWidth = 1.0;
+    blurView.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.18].CGColor;
+    [_menuContainer addSubview:blurView];
+
+    // Tiêu đề Khung
+    UILabel *header = [[UILabel alloc] initWithFrame:CGRectMake(20, 14, 270, 28)];
+    header.text = @"NGUYEN PHU ZALO MOD";
+    header.textColor = [UIColor colorWithRed:0.2 green:0.7 blue:1.0 alpha:1.0];
+    header.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
+    header.textAlignment = NSTextAlignmentCenter;
+    [_menuContainer addSubview:header];
+
+    // Bảng Scroll List
+    _tableView = [[UITableView alloc] initWithFrame:CGRectMake(10, 48, 290, 380) style:UITableViewStylePlain];
+    _tableView.backgroundColor = [UIColor clearColor];
+    _tableView.delegate = self;
+    _tableView.dataSource = self;
+    _tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    _tableView.separatorColor = [UIColor colorWithWhite:1.0 alpha:0.08];
+    [_menuContainer addSubview:_tableView];
+
+    // FOOTER RAINBOW CHUYỂN ĐỘNG MÀU SẮC
+    [self setupRainbowFooter];
+
+    [self addSubview:_menuContainer];
+}
+
+// 3. COPYRIGHT RAINBOW TEXT CHUYỂN MÀU ĐẸP MẮT
+- (void)setupRainbowFooter {
+    UILabel *copyrightLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 438, 290, 30)];
+    copyrightLabel.text = @"Copyright: Nguyen Thanh Phu";
+    copyrightLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightHeavy];
+    copyrightLabel.textAlignment = NSTextAlignmentCenter;
+    copyrightLabel.backgroundColor = [UIColor clearColor];
+
+    // Tạo Lớp Gradient 7 màu Rainbow
+    _rainbowLayer = [CAGradientLayer layer];
+    _rainbowLayer.frame = copyrightLabel.bounds;
+    _rainbowLayer.colors = @[
+        (id)[UIColor redColor].CGColor,
+        (id)[UIColor orangeColor].CGColor,
+        (id)[UIColor yellowColor].CGColor,
+        (id)[UIColor greenColor].CGColor,
+        (id)[UIColor cyanColor].CGColor,
+        (id)[UIColor blueColor].CGColor,
+        (id)[UIColor magentaColor].CGColor,
+        (id)[UIColor redColor].CGColor
+    ];
+    _rainbowLayer.startPoint = CGPointMake(0.0, 0.5);
+    _rainbowLayer.endPoint = CGPointMake(1.0, 0.5);
+
+    // Chuyển Rainbow thành Mask cho Chữ
+    _rainbowLayer.mask = copyrightLabel.layer;
+    copyrightLabel.layer.frame = copyrightLabel.bounds;
+
+    UIView *footerContainer = [[UIView alloc] initWithFrame:CGRectMake(10, 438, 290, 30)];
+    [footerContainer.layer addSublayer:_rainbowLayer];
+    [_menuContainer addSubview:footerContainer];
+
+    // Animation dịch chuyển dải màu
+    CABasicAnimation *animation = [CABasicAnimation animationWithKeyPath:@"colors"];
+    animation.fromValue = _rainbowLayer.colors;
+    animation.toValue = @[
+        (id)[UIColor magentaColor].CGColor,
+        (id)[UIColor redColor].CGColor,
+        (id)[UIColor orangeColor].CGColor,
+        (id)[UIColor yellowColor].CGColor,
+        (id)[UIColor greenColor].CGColor,
+        (id)[UIColor cyanColor].CGColor,
+        (id)[UIColor blueColor].CGColor,
+        (id)[UIColor magentaColor].CGColor
+    ];
+    animation.duration = 2.5;
+    animation.repeatCount = HUGE_VALF;
+    animation.autoreverses = YES;
+    [_rainbowLayer addAnimation:animation forKey:@"rainbowShift"];
+}
+
+// KÉO THẢ VÀ ĐÓNG MỞ
+- (void)handlePan:(UIPanGestureRecognizer *)pan {
+    CGPoint p = [pan translationInView:self];
+    _pillView.center = CGPointMake(_pillView.center.x + p.x, _pillView.center.y + p.y);
+    [pan setTranslation:CGPointZero inView:self];
+    if (_isExpanded) {
+        _menuContainer.frame = CGRectMake(_pillView.frame.origin.x, _pillView.frame.origin.y + 48, 310, 480);
+    }
+}
+
+- (void)toggleMenu {
+    _isExpanded = !_isExpanded;
+    _menuContainer.frame = CGRectMake(_pillView.frame.origin.x, _pillView.frame.origin.y + 48, 310, 480);
+
+    [UIView animateWithDuration:0.3 delay:0 usingSpringWithDamping:0.8 initialSpringVelocity:0.4 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+        self->_menuContainer.alpha = self->_isExpanded ? 1.0 : 0.0;
+        self->_menuContainer.transform = self->_isExpanded ? CGAffineTransformIdentity : CGAffineTransformMakeScale(0.85, 0.85);
+    } completion:nil];
+}
+
+// DATA VÀ CẤU HÌNH TÍNH NĂNG
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return 28;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    static NSString *cellID = @"NPModCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID];
+
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellID];
+        cell.backgroundColor = [UIColor clearColor];
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+
+        UISwitch *sw = [[UISwitch alloc] init];
+        sw.onTintColor = [UIColor colorWithRed:0.0 green:0.55 blue:1.0 alpha:1.0];
+        [sw addTarget:self action:@selector(switchToggled:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = sw;
+    }
+
+    UISwitch *sw = (UISwitch *)cell.accessoryView;
+    sw.tag = indexPath.row;
+
+    // TÙY CHỈNH FONT, KÍCH CỠ, MÀU SẮC THEO TÍNH NĂNG
+    NSArray *titles = @[
+        @"1. Ẩn trạng thái Đã xem", @"2. Ẩn Trạng thái Soạn tin", @"3. Ẩn Trạng thái Truy cập",
+        @"4. Chống Thu hồi Tin nhắn", @"5. Tải Video/Story HD", @"6. Lưu Ảnh xem 1 lần",
+        @"7. Chặn Quảng cáo Zalo", @"8. Khung VIP Profile", @"9. Bỏ chặn Chụp màn hình",
+        @"10. Auto Like Story", @"11. Dark Amoled Theme", @"12. Tua Voice Message x2",
+        @"13. Gửi File Dung lượng lớn", @"14. Ẩn Thành viên Nhóm", @"15. Auto Trả lời tin nhắn",
+        @"16. Ghim vô hạn Chat", @"17. Khóa ứng dụng BioID", @"18. Giả lập GPS Vị trí",
+        @"19. Tùy chỉnh Cỡ chữ Chat", @"20. Font chữ In đậm", @"21. Font chữ In nghiêng",
+        @"22. Đổi Màu chữ Tin nhắn", @"23. Xem Story Ẩn danh", @"24. Copy Văn bản bảo vệ",
+        @"25. Tắt Rung khi gõ", @"26. Ẩn Cuộc gọi đến", @"27. Dịch Tự động Chat", @"28. Chống Xóa Log Gọi"
+    ];
+
+    cell.textLabel.text = titles[indexPath.row];
+    
+    // Tùy biến kiểu chữ đặc biệt cho các mục Tùy Chỉnh Font (18-21)
+    if (indexPath.row == 18) { // Cỡ chữ
+        cell.textLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+        cell.textLabel.textColor = [UIColor colorWithRed:1.0 green:0.8 blue:0.2 alpha:1.0];
+    } else if (indexPath.row == 19) { // In đậm
+        cell.textLabel.font = [UIFont boldSystemFontOfSize:13];
+        cell.textLabel.textColor = [UIColor whiteColor];
+    } else if (indexPath.row == 20) { // In nghiêng
+        cell.textLabel.font = [UIFont italicSystemFontOfSize:13];
+        cell.textLabel.textColor = [UIColor whiteColor];
+    } else if (indexPath.row == 21) { // Đổi màu
+        cell.textLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+        cell.textLabel.textColor = [UIColor colorWithRed:0.2 green:0.9 blue:0.6 alpha:1.0];
+    } else {
+        cell.textLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightRegular];
+        cell.textLabel.textColor = [UIColor whiteColor];
+    }
+
+    // Chèn SVG Shield Icon nhỏ cho mỗi Cell
+    CAShapeLayer *iconLayer = [SVGUtils createSVGIconWithType:2 size:CGSizeMake(14, 14) color:[UIColor colorWithRed:0.0 green:0.6 blue:1.0 alpha:0.7]];
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(16, 16), NO, 0.0);
+    [iconLayer renderInContext:UIGraphicsGetCurrentContext()];
+    UIImage *iconImg = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    cell.imageView.image = iconImg;
+
+    return cell;
+}
+
+- (void)switchToggled:(UISwitch *)sender {
+    NSInteger i = sender.tag;
+    if (i == 0) gSettings.hideReadReceipt = sender.isOn;
+    else if (i == 1) gSettings.hideTypingStatus = sender.isOn;
+    else if (i == 2) gSettings.hideOnlineStatus = sender.isOn;
+    else if (i == 3) gSettings.preventMsgRecall = sender.isOn;
+    else if (i == 18) gSettings.customFontSize = sender.isOn;
+    else if (i == 19) gSettings.customFontBold = sender.isOn;
+    else if (i == 20) gSettings.customFontItalic = sender.isOn;
+    else if (i == 21) gSettings.customTextColor = sender.isOn;
+}
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *v = [super hitTest:point withEvent:event];
+    return (v == self) ? nil : v;
+}
+
+@end
