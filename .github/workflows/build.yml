@@ -3,22 +3,24 @@ on: [push, workflow_dispatch]
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Install LLVM/Clang & iOS SDK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld
+          git clone --depth 1 https://github.com/phracker/MacOSX-SDKs.git /tmp/sdks || true
+
       - name: Compile Dylib
         run: |
-          clang -dynamiclib \
+          clang -shared \
             -fobjc-arc \
-            -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
             -arch arm64 \
-            -miphoneos-version-min=14.0 \
-            -framework UIKit \
-            -framework Foundation \
-            -framework QuartzCore \
-            -framework CoreGraphics \
+            -target arm64-apple-ios14.0 \
+            -isysroot /tmp/sdks/MacOSX11.3.sdk \
             -w \
             NguyenPhuZaloMod.m -o NguyenPhuZaloMod.dylib
 
