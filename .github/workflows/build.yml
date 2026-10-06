@@ -1,0 +1,27 @@
+name: Build Nguyen Phu Mod Zalo Dylib
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Compile Dylib
+        run: |
+          clang -dynamiclib \
+            -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+            -arch arm64 \
+            -miphoneos-version-min=14.0 \
+            -framework UIKit \
+            -framework Foundation \
+            -framework QuartzCore \
+            -framework CoreGraphics \
+            NguyenPhuZaloMod.m -o NguyenPhuZaloMod.dylib
+
+      - name: Upload Dylib Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NguyenPhuZaloMod-Dylib
+          path: NguyenPhuZaloMod.dylib
