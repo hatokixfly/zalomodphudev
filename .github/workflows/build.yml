@@ -3,22 +3,19 @@ on: [push, workflow_dispatch]
 
 jobs:
   build:
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Download iPhoneOS SDK
-        run: |
-          git clone --depth 1 https://github.com/theos/sdks.git $HOME/sdks
-
       - name: Compile Dylib
         run: |
-          xcrun -sdk macosx clang -dynamiclib \
+          SDKPATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          clang -dynamiclib \
             -fobjc-arc \
             -arch arm64 \
             -miphoneos-version-min=14.0 \
-            -isysroot $HOME/sdks/iPhoneOS14.5.sdk \
+            -isysroot "$SDKPATH" \
             -framework UIKit \
             -framework Foundation \
             -framework QuartzCore \
